@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sky Hopper</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0b1120;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+    .hud {
+      width: min(560px, 94vw);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      margin-bottom: 10px;
+      background: #1e293b;
+      border: 1px solid rgba(148,163,184,0.18);
+      border-radius: 10px;
+      font-size: 14px;
+    }
+    .stats { display: flex; gap: 16px; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .stats strong { color: #f59e0b; }
+    button {
+      background: #0f172a;
+      color: #f8fafc;
+      border: 1px solid rgba(148,163,184,0.25);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { border-color: #f59e0b; color: #fbbf24; }
+    button.primary { background: #f59e0b; color: #0f172a; border-color: #f59e0b; }
+    .stage {
+      position: relative;
+      width: min(560px, 94vw);
+      aspect-ratio: 4 / 3;
+      max-height: 76vh;
+      background: #0f172a;
+      border: 1px solid rgba(148,163,184,0.22);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    canvas { width: 100%; height: 100%; display: block; cursor: pointer; }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      background: rgba(11, 17, 32, 0.82);
+    }
+    .overlay.hidden { display: none; }
+    .overlay h1 { margin: 0 0 8px; font-size: 28px; }
+    .overlay p { margin: 0 0 18px; color: #cbd5e1; font-size: 14px; max-width: 34ch; }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div class="stats">
+      <span>Score: <strong id="scoreEl">0</strong></span>
+      <span>Best: <strong id="bestEl">0</strong></span>
+    </div>
+    <button id="muteBtn" type="button">Sound: On</button>
+  </div>
+
+  <div class="stage">
+    <canvas id="canvas" width="560" height="420"></canvas>
+    <div class="overlay" id="overlay">
+      <h1 id="overlayTitle">Sky Hopper</h1>
+      <p id="overlayDesc">Press Space, Up Arrow, or click anywhere to boost your glider through tower gaps.</p>
+      <button class="primary" id="startBtn" type="button">Take Flight</button>
+    </div>
+  </div>
+
+  <script>
+    const BEST_KEY = 'recess_hopper_best_v1';
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('scoreEl');
+    const bestEl = document.getElementById('bestEl');
+    const overlay = document.getElementById('overlay');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlayDesc = document.getElementById('overlayDesc');
+    const startBtn = document.getElementById('startBtn');
+    const muteBtn = document.getElementById('muteBtn');
+
+    let state = 'TITLE_MENU';
+    let score = 0;
+    let best = Number(localStorage.getItem(BEST_KEY) || 0);
+    let muted = false;
+    bestEl.textContent = best;
+
+    const glider = { x: 130, y: 200, vy: 0, r: 13 };
+    let pipes = [];
+    let frame = 0;
+
+    let audioCtx = null;
+    function beep(freq, dur, vol = 0.06) {
+      if (muted) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
+      } catch {}
+    }
+
+    function startNew() {
+      score = 0;
+      frame = 0;
+      pipes = [];
+      glider.y = 200;
+      glider.vy = -5.2;
+      scoreEl.textContent = '0';
+      state = 'PLAYING';
+      overlay.classList.add('hidden');
+      beep(520, 0.07);
+    }
+
+    function flap() {
+      if (state === 'TITLE_MENU') {
+        startNew();
+        return;
+      }
+      if (state !== 'PLAYING') return;
+      glider.vy = -6.2;
+      beep(460, 0.05);
+    }
+
+    function endGame() {
+      state = 'GAME_OVER';
+      beep(160, 0.22);
+      overlayTitle.textContent = 'Crash Landing';
+      overlayDesc.textContent = `Score: ${score}. Best Run: ${best}.`;
+      startBtn.textContent = 'Fly Again';
+      overlay.classList.remove('hidden');
+    }
+
+    function update() {
+      if (state !== 'PLAYING') return;
+      frame++;
+
+      glider.vy += 0.34;
+      glider.y += glider.vy;
+
+      if (frame % 96 === 1) {
+        const gap = 128;
+        const topH = 55 + Math.random() * (canvas.height - gap - 110);
+        pipes.push({ x: canvas.width + 20, w: 54, topH, gap, passed: false });
+      }
+
+      for (let i = pipes.length - 1; i >= 0; i--) {
+        const p = pipes[i];
+        p.x -= 2.8;
+
+        if (!p.passed && p.x + p.w < glider.x) {
+          p.passed = true;
+          score += 1;
+          scoreEl.textContent = score;
+          if (score > best) {
+            best = score;
+            bestEl.textContent = best;
+            localStorage.setItem(BEST_KEY, String(best));
+          }
+          beep(680, 0.07);
+        }
+
+        const withinX = glider.x + glider.r - 3 > p.x && glider.x - glider.r + 3 < p.x + p.w;
+        const hitPipe = withinX && (glider.y - glider.r + 3 < p.topH || glider.y + glider.r - 3 > p.topH + p.gap);
+        if (hitPipe) {
+          endGame();
+          return;
+        }
+
+        if (p.x + p.w < -10) pipes.splice(i, 1);
+      }
+
+      if (glider.y - glider.r < 0 || glider.y + glider.r > canvas.height) {
+        endGame();
+      }
+    }
+
+    function draw() {
+      const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      grad.addColorStop(0, '#0f172a');
+      grad.addColorStop(1, '#1e293b');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Skyline silhouette
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
+      for (let i = 0; i < 8; i++) {
+        const h = 40 + ((i * 37) % 70);
+        ctx.fillRect(i * 75, canvas.height - h, 56, h);
+      }
+
+      // Towers
+      for (const p of pipes) {
+        ctx.fillStyle = '#334155';
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 2;
+        ctx.fillRect(p.x, 0, p.w, p.topH);
+        ctx.strokeRect(p.x, -2, p.w, p.topH + 2);
+
+        const bottomY = p.topH + p.gap;
+        ctx.fillRect(p.x, bottomY, p.w, canvas.height - bottomY);
+        ctx.strokeRect(p.x, bottomY, p.w, canvas.height - bottomY + 2);
+      }
+
+      // Glider
+      ctx.save();
+      ctx.translate(glider.x, glider.y);
+      ctx.rotate(Math.max(-0.45, Math.min(0.6, glider.vy * 0.06)));
+      ctx.fillStyle = '#f59e0b';
+      ctx.strokeStyle = '#fef3c7';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(16, 0);
+      ctx.lineTo(-14, -10);
+      ctx.lineTo(-8, 0);
+      ctx.lineTo(-14, 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    canvas.addEventListener('mousedown', flap);
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); flap(); }, { passive: false });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') {
+        e.preventDefault();
+        flap();
+      }
+    });
+
+    startBtn.addEventListener('click', startNew);
+    muteBtn.addEventListener('click', () => {
+      muted = !muted;
+      muteBtn.textContent = muted ? 'Sound: Off' : 'Sound: On';
+    });
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

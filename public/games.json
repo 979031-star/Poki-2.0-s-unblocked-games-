@@ -1,0 +1,68 @@
+[
+  {
+    "id": "grid-snake",
+    "title": "Grid Snake",
+    "category": "Arcade",
+    "players": "1 Player",
+    "controls": "Arrow Keys / WASD",
+    "description": "Navigate the tactical grid, collect ruby fruit, and grow your tail without clipping the walls or yourself.",
+    "thumbnail": "/src/assets/images/thumb_grid_snake_1795131255480.jpg",
+    "featured": true,
+    "iframe": "<iframe src=\"/games/snake.html\" title=\"Grid Snake\" loading=\"lazy\" allow=\"fullscreen\" allowfullscreen></iframe>"
+  },
+  {
+    "id": "brick-breaker",
+    "title": "Brick Breaker",
+    "category": "Arcade",
+    "players": "1 Player",
+    "controls": "Mouse / Left & Right Arrows",
+    "description": "Deflect the energy ball off your paddle to shatter layered brick formations and catch widening boosts.",
+    "thumbnail": "/src/assets/images/thumb_brick_breaker_1795131256187.jpg",
+    "featured": false,
+    "iframe": "<iframe src=\"/games/breaker.html\" title=\"Brick Breaker\" loading=\"lazy\" allow=\"fullscreen\" allowfullscreen></iframe>"
+  },
+  {
+    "id": "tile-2048",
+    "title": "2048 Classic",
+    "category": "Puzzle",
+    "players": "1 Player",
+    "controls": "Arrow Keys / Swipe",
+    "description": "Slide matching ceramic number tiles across the 4x4 board to combine powers of two until you reach 2048.",
+    "thumbnail": "/src/assets/images/thumb_tile_2048_1795131255079.jpg",
+    "featured": false,
+    "iframe": "<iframe src=\"/games/2048.html\" title=\"2048 Classic\" loading=\"lazy\" allow=\"fullscreen\" allowfullscreen></iframe>"
+  },
+  {
+    "id": "void-blaster",
+    "title": "Void Blaster",
+    "category": "Action",
+    "players": "1 Player",
+    "controls": "Arrows to Steer · Space to Fire",
+    "description": "Pilot your delta starfighter through dense asteroid fields, split drifting boulders, and clear escalating waves.",
+    "thumbnail": "/src/assets/images/thumb_void_blaster_1795131254479.jpg",
+    "featured": false,
+    "iframe": "<iframe src=\"/games/asteroids.html\" title=\"Void Blaster\" loading=\"lazy\" allow=\"fullscreen\" allowfullscreen></iframe>"
+  },
+  {
+    "id": "sky-hopper",
+    "title": "Sky Hopper",
+    "category": "Action",
+    "players": "1 Player",
+    "controls": "Space / Click / Tap",
+    "description": "Guide your amber glider through narrow skyline tower gaps with precise timing and smooth momentum.",
+    "thumbnail": "/src/assets/images/thumb_sky_hopper_1795131254451.jpg",
+    "featured": false,
+    "iframe": "<iframe src=\"/games/hopper.html\" title=\"Sky Hopper\" loading=\"lazy\" allow=\"fullscreen\" allowfullscreen></iframe>"
+  },
+  {
+    "id": "mine-grid",
+    "title": "Mine Grid",
+    "category": "Logic",
+    "players": "1 Player",
+    "controls": "Left Click Reveal · Right Click Flag",
+    "description": "Deduce hidden hazard locations using adjacent tile counts and clear every safe sector without detonating a mine.",
+    "thumbnail": "/src/assets/images/thumb_mine_grid_1795131255014.jpg",
+    "featured": false,
+    "iframe": "<iframe src=\"/games/minesweeper.html\" title=\"Mine Grid\" loading=\"lazy\" allow=\"fullscreen\" allowfullscreen></iframe>"
+  }
+]

@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>2048 Classic</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0b1120;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, sans-serif;
+      user-select: none;
+    }
+    .wrap { width: min(440px, 94vw); }
+    .hud {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      background: #1e293b;
+      border: 1px solid rgba(148,163,184,0.18);
+      border-radius: 10px;
+      font-size: 14px;
+    }
+    .stats { display: flex; gap: 16px; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .stats strong { color: #f59e0b; }
+    .hud-btns { display: flex; gap: 8px; }
+    button {
+      background: #0f172a;
+      color: #f8fafc;
+      border: 1px solid rgba(148,163,184,0.25);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { border-color: #f59e0b; color: #fbbf24; }
+    button.primary { background: #f59e0b; color: #0f172a; border-color: #f59e0b; }
+    .board-wrap {
+      position: relative;
+      background: #1e293b;
+      border: 1px solid rgba(148,163,184,0.2);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      aspect-ratio: 1 / 1;
+    }
+    .tile {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: #0f172a;
+      font-size: clamp(20px, 5vw, 32px);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      transition: transform 100ms ease, background-color 120ms ease;
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      background: rgba(11, 17, 32, 0.88);
+    }
+    .overlay.hidden { display: none; }
+    .overlay h1 { margin: 0 0 8px; font-size: 28px; }
+    .overlay p { margin: 0 0 18px; color: #cbd5e1; font-size: 14px; }
+    .hint { margin: 10px 0 0; text-align: center; font-size: 13px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hud">
+      <div class="stats">
+        <span>Score: <strong id="scoreEl">0</strong></span>
+        <span>Best: <strong id="bestEl">0</strong></span>
+      </div>
+      <div class="hud-btns">
+        <button id="undoBtn" type="button">Undo</button>
+        <button id="newBtn" type="button" class="primary">New Game</button>
+      </div>
+    </div>
+
+    <div class="board-wrap" id="boardWrap">
+      <div class="grid" id="grid"></div>
+      <div class="overlay hidden" id="overlay">
+        <h1 id="overlayTitle">Game Over</h1>
+        <p id="overlayDesc"></p>
+        <button id="retryBtn" type="button" class="primary">Play Again</button>
+      </div>
+    </div>
+    <p class="hint">Use Arrow Keys, WASD, or swipe to merge matching tiles.</p>
+  </div>
+
+  <script>
+    const BEST_KEY = 'recess_2048_best_v1';
+    const gridEl = document.getElementById('grid');
+    const scoreEl = document.getElementById('scoreEl');
+    const bestEl = document.getElementById('bestEl');
+    const overlay = document.getElementById('overlay');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlayDesc = document.getElementById('overlayDesc');
+    const undoBtn = document.getElementById('undoBtn');
+    const newBtn = document.getElementById('newBtn');
+    const retryBtn = document.getElementById('retryBtn');
+    const boardWrap = document.getElementById('boardWrap');
+
+    const COLORS = {
+      0: ['#0f172a', '#64748b'],
+      2: ['#334155', '#f8fafc'],
+      4: ['#475569', '#f8fafc'],
+      8: ['#b45309', '#fffbeb'],
+      16: ['#d97706', '#fffbeb'],
+      32: ['#ea580c', '#ffffff'],
+      64: ['#dc2626', '#ffffff'],
+      128: ['#ca8a04', '#0f172a'],
+      256: ['#eab308', '#0f172a'],
+      512: ['#f59e0b', '#0f172a'],
+      1024: ['#10b981', '#0f172a'],
+      2048: ['#34d399', '#0f172a'],
+    };
+
+    let board = [];
+    let score = 0;
+    let best = Number(localStorage.getItem(BEST_KEY) || 0);
+    let prevBoard = null;
+    let prevScore = 0;
+    let wonAnnounced = false;
+    bestEl.textContent = best;
+
+    function emptyBoard() {
+      return Array.from({ length: 4 }, () => [0, 0, 0, 0]);
+    }
+
+    function addTile() {
+      const empty = [];
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          if (board[r][c] === 0) empty.push([r, c]);
+        }
+      }
+      if (!empty.length) return;
+      const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+      board[r][c] = Math.random() < 0.9 ? 2 : 4;
+    }
+
+    function render() {
+      gridEl.innerHTML = '';
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          const val = board[r][c];
+          const tile = document.createElement('div');
+          tile.className = 'tile';
+          const [bg, fg] = COLORS[val] || ['#f59e0b', '#0f172a'];
+          tile.style.backgroundColor = bg;
+          tile.style.color = fg;
+          tile.textContent = val ? String(val) : '';
+          gridEl.appendChild(tile);
+        }
+      }
+      scoreEl.textContent = score;
+      if (score > best) {
+        best = score;
+        bestEl.textContent = best;
+        localStorage.setItem(BEST_KEY, String(best));
+      }
+    }
+
+    function slideLine(line) {
+      const nums = line.filter((n) => n !== 0);
+      let gained = 0;
+      for (let i = 0; i < nums.length - 1; i++) {
+        if (nums[i] === nums[i + 1]) {
+          nums[i] *= 2;
+          gained += nums[i];
+          nums[i + 1] = 0;
+        }
+      }
+      const merged = nums.filter((n) => n !== 0);
+      while (merged.length < 4) merged.push(0);
+      return { line: merged, gained };
+    }
+
+    function canMove() {
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          if (board[r][c] === 0) return true;
+          if (r < 3 && board[r][c] === board[r + 1][c]) return true;
+          if (c < 3 && board[r][c] === board[r][c + 1]) return true;
+        }
+      }
+      return false;
+    }
+
+    function move(dir) {
+      const snapshot = board.map((r) => [...r]);
+      const scoreSnapshot = score;
+      let moved = false;
+
+      if (dir === 'left' || dir === 'right') {
+        for (let r = 0; r < 4; r++) {
+          const row = dir === 'right' ? [...board[r]].reverse() : [...board[r]];
+          const { line, gained } = slideLine(row);
+          const finalRow = dir === 'right' ? line.reverse() : line;
+          if (finalRow.some((v, i) => v !== board[r][i])) moved = true;
+          board[r] = finalRow;
+          score += gained;
+        }
+      } else {
+        for (let c = 0; c < 4; c++) {
+          const col = [board[0][c], board[1][c], board[2][c], board[3][c]];
+          const ordered = dir === 'down' ? [...col].reverse() : col;
+          const { line, gained } = slideLine(ordered);
+          const finalCol = dir === 'down' ? line.reverse() : line;
+          for (let r = 0; r < 4; r++) {
+            if (finalCol[r] !== board[r][c]) moved = true;
+            board[r][c] = finalCol[r];
+          }
+          score += gained;
+        }
+      }
+
+      if (!moved) return;
+      prevBoard = snapshot;
+      prevScore = scoreSnapshot;
+      addTile();
+      render();
+
+      if (!wonAnnounced && board.some((r) => r.includes(2048))) {
+        wonAnnounced = true;
+        overlayTitle.textContent = '2048 Reached';
+        overlayDesc.textContent = `Score: ${score}. You can keep going or start a new board.`;
+        retryBtn.textContent = 'Keep Playing';
+        overlay.classList.remove('hidden');
+        return;
+      }
+
+      if (!canMove()) {
+        overlayTitle.textContent = 'No Moves Left';
+        overlayDesc.textContent = `Final Score: ${score}. Best: ${best}.`;
+        retryBtn.textContent = 'Play Again';
+        overlay.classList.remove('hidden');
+      }
+    }
+
+    function startNew() {
+      board = emptyBoard();
+      score = 0;
+      prevBoard = null;
+      wonAnnounced = false;
+      overlay.classList.add('hidden');
+      addTile();
+      addTile();
+      render();
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
+      if (e.key === 'ArrowLeft' || e.key === 'a') move('left');
+      if (e.key === 'ArrowRight' || e.key === 'd') move('right');
+      if (e.key === 'ArrowUp' || e.key === 'w') move('up');
+      if (e.key === 'ArrowDown' || e.key === 's') move('down');
+    });
+
+    let touchStart = null;
+    boardWrap.addEventListener('touchstart', (e) => {
+      touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }, { passive: true });
+    boardWrap.addEventListener('touchend', (e) => {
+      if (!touchStart) return;
+      const dx = e.changedTouches[0].clientX - touchStart.x;
+      const dy = e.changedTouches[0].clientY - touchStart.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) > 24) {
+        if (Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? 'right' : 'left');
+        else move(dy > 0 ? 'down' : 'up');
+      }
+      touchStart = null;
+    });
+
+    undoBtn.addEventListener('click', () => {
+      if (!prevBoard) return;
+      board = prevBoard;
+      score = prevScore;
+      prevBoard = null;
+      overlay.classList.add('hidden');
+      render();
+    });
+    newBtn.addEventListener('click', startNew);
+    retryBtn.addEventListener('click', () => {
+      if (wonAnnounced && canMove()) overlay.classList.add('hidden');
+      else startNew();
+    });
+
+    startNew();
+  </script>
+</body>
+</html>

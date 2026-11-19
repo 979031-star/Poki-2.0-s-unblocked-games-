@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Void Blaster</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0b1120;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+    .hud {
+      width: min(680px, 95vw);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      margin-bottom: 10px;
+      background: #1e293b;
+      border: 1px solid rgba(148,163,184,0.18);
+      border-radius: 10px;
+      font-size: 14px;
+    }
+    .stats { display: flex; gap: 16px; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .stats strong { color: #f59e0b; }
+    .hud-btns { display: flex; gap: 8px; }
+    button {
+      background: #0f172a;
+      color: #f8fafc;
+      border: 1px solid rgba(148,163,184,0.25);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { border-color: #f59e0b; color: #fbbf24; }
+    button.primary { background: #f59e0b; color: #0f172a; border-color: #f59e0b; }
+    .stage {
+      position: relative;
+      width: min(680px, 95vw);
+      aspect-ratio: 4 / 3;
+      max-height: 76vh;
+      background: #070b14;
+      border: 1px solid rgba(148,163,184,0.22);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    canvas { width: 100%; height: 100%; display: block; }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      background: rgba(7, 11, 20, 0.86);
+    }
+    .overlay.hidden { display: none; }
+    .overlay h1 { margin: 0 0 8px; font-size: 28px; }
+    .overlay p { margin: 0 0 20px; color: #cbd5e1; font-size: 14px; max-width: 36ch; }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div class="stats">
+      <span>Score: <strong id="scoreEl">0</strong></span>
+      <span>Wave: <strong id="waveEl">1</strong></span>
+      <span>Ships: <strong id="livesEl">3</strong></span>
+    </div>
+    <div class="hud-btns">
+      <button id="muteBtn" type="button">Sound: On</button>
+      <button id="restartBtn" type="button">Restart</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <canvas id="canvas" width="640" height="480"></canvas>
+    <div class="overlay" id="overlay">
+      <h1 id="overlayTitle">Void Blaster</h1>
+      <p id="overlayDesc">Left/Right or A/D to rotate, Up or W to thrust, and Space to fire lasers.</p>
+      <button class="primary" id="startBtn" type="button">Launch Ship</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('scoreEl');
+    const waveEl = document.getElementById('waveEl');
+    const livesEl = document.getElementById('livesEl');
+    const overlay = document.getElementById('overlay');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlayDesc = document.getElementById('overlayDesc');
+    const startBtn = document.getElementById('startBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    const muteBtn = document.getElementById('muteBtn');
+
+    let state = 'TITLE_MENU';
+    let score = 0;
+    let wave = 1;
+    let lives = 3;
+    let muted = false;
+    let invuln = 0;
+    let fireCooldown = 0;
+
+    const keys = {};
+    const ship = { x: 320, y: 240, vx: 0, vy: 0, angle: -Math.PI / 2, r: 12 };
+    let bullets = [];
+    let rocks = [];
+    const stars = Array.from({ length: 55 }, () => ({
+      x: Math.random() * 640,
+      y: Math.random() * 480,
+      s: Math.random() * 1.6 + 0.5,
+    }));
+
+    let audioCtx = null;
+    function beep(freq, dur, type = 'square', vol = 0.05) {
+      if (muted) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
+      } catch {}
+    }
+
+    function createRock(x, y, size) {
+      const speed = (4 - size) * 0.75 + Math.random() * 1.1;
+      const dir = Math.random() * Math.PI * 2;
+      const verts = 8;
+      const shape = Array.from({ length: verts }, () => 0.75 + Math.random() * 0.45);
+      return {
+        x,
+        y,
+        vx: Math.cos(dir) * speed,
+        vy: Math.sin(dir) * speed,
+        size,
+        r: size === 3 ? 34 : size === 2 ? 20 : 11,
+        angle: Math.random() * Math.PI * 2,
+        spin: (Math.random() - 0.5) * 0.03,
+        shape,
+      };
+    }
+
+    function spawnWave() {
+      rocks = [];
+      const count = 3 + wave;
+      for (let i = 0; i < count; i++) {
+        let rx, ry;
+        do {
+          rx = Math.random() * canvas.width;
+          ry = Math.random() * canvas.height;
+        } while (Math.hypot(rx - ship.x, ry - ship.y) < 120);
+        rocks.push(createRock(rx, ry, 3));
+      }
+    }
+
+    function startNew() {
+      score = 0;
+      wave = 1;
+      lives = 3;
+      bullets = [];
+      ship.x = 320;
+      ship.y = 240;
+      ship.vx = 0;
+      ship.vy = 0;
+      ship.angle = -Math.PI / 2;
+      invuln = 90;
+      scoreEl.textContent = score;
+      waveEl.textContent = wave;
+      livesEl.textContent = lives;
+      spawnWave();
+      state = 'PLAYING';
+      overlay.classList.add('hidden');
+      beep(520, 0.08, 'triangle');
+    }
+
+    function wrap(obj) {
+      if (obj.x < -20) obj.x = canvas.width + 20;
+      if (obj.x > canvas.width + 20) obj.x = -20;
+      if (obj.y < -20) obj.y = canvas.height + 20;
+      if (obj.y > canvas.height + 20) obj.y = -20;
+    }
+
+    function update() {
+      if (state !== 'PLAYING') return;
+
+      if (keys.ArrowLeft || keys.a || keys.A) ship.angle -= 0.068;
+      if (keys.ArrowRight || keys.d || keys.D) ship.angle += 0.068;
+      if (keys.ArrowUp || keys.w || keys.W) {
+        ship.vx += Math.cos(ship.angle) * 0.16;
+        ship.vy += Math.sin(ship.angle) * 0.16;
+      }
+
+      ship.vx *= 0.99;
+      ship.vy *= 0.99;
+      ship.x += ship.vx;
+      ship.y += ship.vy;
+      wrap(ship);
+
+      if (invuln > 0) invuln--;
+      if (fireCooldown > 0) fireCooldown--;
+
+      if (keys[' '] && fireCooldown === 0) {
+        bullets.push({
+          x: ship.x + Math.cos(ship.angle) * 14,
+          y: ship.y + Math.sin(ship.angle) * 14,
+          vx: Math.cos(ship.angle) * 7.5 + ship.vx * 0.4,
+          vy: Math.sin(ship.angle) * 7.5 + ship.vy * 0.4,
+          life: 52,
+        });
+        fireCooldown = 12;
+        beep(740, 0.04, 'triangle', 0.04);
+      }
+
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.vx;
+        b.y += b.vy;
+        b.life--;
+        wrap(b);
+        if (b.life <= 0) bullets.splice(i, 1);
+      }
+
+      for (let i = rocks.length - 1; i >= 0; i--) {
+        const rk = rocks[i];
+        rk.x += rk.vx;
+        rk.y += rk.vy;
+        rk.angle += rk.spin;
+        wrap(rk);
+
+        // Bullet hits rock
+        let destroyed = false;
+        for (let j = bullets.length - 1; j >= 0; j--) {
+          const b = bullets[j];
+          if (Math.hypot(b.x - rk.x, b.y - rk.y) < rk.r) {
+            bullets.splice(j, 1);
+            rocks.splice(i, 1);
+            score += rk.size === 3 ? 20 : rk.size === 2 ? 50 : 100;
+            scoreEl.textContent = score;
+            beep(260 + (4 - rk.size) * 100, 0.09, 'sawtooth', 0.05);
+            if (rk.size > 1) {
+              rocks.push(createRock(rk.x, rk.y, rk.size - 1));
+              rocks.push(createRock(rk.x, rk.y, rk.size - 1));
+            }
+            destroyed = true;
+            break;
+          }
+        }
+        if (destroyed) continue;
+
+        // Ship hits rock
+        if (invuln === 0 && Math.hypot(ship.x - rk.x, ship.y - rk.y) < rk.r + ship.r - 3) {
+          lives -= 1;
+          livesEl.textContent = lives;
+          beep(130, 0.28, 'sawtooth', 0.08);
+          if (lives <= 0) {
+            state = 'GAME_OVER';
+            overlayTitle.textContent = 'Ship Destroyed';
+            overlayDesc.textContent = `Reached Wave ${wave} with ${score} points.`;
+            startBtn.textContent = 'Play Again';
+            overlay.classList.remove('hidden');
+            return;
+          }
+          ship.x = 320;
+          ship.y = 240;
+          ship.vx = 0;
+          ship.vy = 0;
+          invuln = 110;
+        }
+      }
+
+      if (rocks.length === 0) {
+        wave += 1;
+        waveEl.textContent = wave;
+        spawnWave();
+        beep(640, 0.16, 'triangle');
+      }
+    }
+
+    function draw() {
+      ctx.fillStyle = '#070b14';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.45)';
+      for (const s of stars) {
+        ctx.fillRect(s.x, s.y, s.s, s.s);
+      }
+
+      // Rocks
+      ctx.strokeStyle = '#94a3b8';
+      ctx.fillStyle = '#1e293b';
+      ctx.lineWidth = 2;
+      for (const rk of rocks) {
+        ctx.save();
+        ctx.translate(rk.x, rk.y);
+        ctx.rotate(rk.angle);
+        ctx.beginPath();
+        rk.shape.forEach((mult, idx) => {
+          const a = (idx / rk.shape.length) * Math.PI * 2;
+          const px = Math.cos(a) * rk.r * mult;
+          const py = Math.sin(a) * rk.r * mult;
+          if (idx === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Bullets
+      ctx.fillStyle = '#f59e0b';
+      for (const b of bullets) {
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Ship
+      if (state !== 'GAME_OVER' && (invuln === 0 || Math.floor(invuln / 6) % 2 === 0)) {
+        ctx.save();
+        ctx.translate(ship.x, ship.y);
+        ctx.rotate(ship.angle);
+        ctx.strokeStyle = '#f8fafc';
+        ctx.fillStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(15, 0);
+        ctx.lineTo(-11, -9);
+        ctx.lineTo(-6, 0);
+        ctx.lineTo(-11, 9);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        if (keys.ArrowUp || keys.w || keys.W) {
+          ctx.fillStyle = '#38bdf8';
+          ctx.beginPath();
+          ctx.moveTo(-9, -4);
+          ctx.lineTo(-18 - Math.random() * 5, 0);
+          ctx.lineTo(-9, 4);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+      keys[e.key] = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      keys[e.key] = false;
+    });
+
+    startBtn.addEventListener('click', startNew);
+    restartBtn.addEventListener('click', startNew);
+    muteBtn.addEventListener('click', () => {
+      muted = !muted;
+      muteBtn.textContent = muted ? 'Sound: Off' : 'Sound: On';
+    });
+
+    spawnWave();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

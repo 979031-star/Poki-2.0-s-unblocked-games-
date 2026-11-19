@@ -1,0 +1,8 @@
+{
+  "name": "Poki 2.0",
+  "description": "A fast, distraction-free unblocked browser games portal storing each playable game as an iframe in a JSON catalog.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
